@@ -1,0 +1,11 @@
+Manifest-Version: 1.0
+Built-By: kimminseok
+Build-Timestamp: 2020-01-28T21:28:16.680+0900
+Build-Revision: 
+Created-By: Gradle 5.2.1
+Build-Jdk: 11.0.5 (JetBrains s.r.o 11.0.5+10-b520.30)
+Build-OS: Mac OS X x86_64 10.15.2
+Premain-Class: me.whiteship.Application
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true
+

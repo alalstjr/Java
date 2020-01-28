@@ -19,6 +19,12 @@
 - [3. 클래스 로더](#클래스-로더)
     - [1. 로딩](#로딩)
     - [2. 링크](#링크)
+- [4. 바이트코드 조작](#바이트코드-조작)
+    - [1. 바이트코드 조작 예제](#바이트코드-조작-예제)
+    - [2. ByteBuddy](#ByteBuddy)
+    - [3. javaagent 실습](#javaagent-실습)
+- [5. 바이트코드 조작 정리](#바이트코드-조작-정리)
+    - [1. 참고](#참고)
 
 
 # 자바 JVM JDK 그리고 JRE
@@ -286,3 +292,285 @@ WhiteShip whiteShip = new WhiteShip();
 WhiteShip 는 심볼릭 레퍼런스 입니다.
 실제 레퍼런스를 가리키고 있지 않습니다.
 심볼릭 레퍼런스를 실제 힙 영역에 들어있는 레퍼런스를 가리키도록 일어날 수도 안일어날 수도 있는 옵셔널 상태입니다.
+
+# 바이트코드 조작
+
+코드 커버리지란 테스트 코드가 원본 코드의 얼마만큼 커버(테스트) 했는지 확인하는 것
+
+~~~
+public class Moim {
+    public int maxNumberOfAttendees;
+    public int numberOfEnrollment;
+
+    public Boolean isEnrollmentFull() {
+        if (maxNumberOfAttendees == 0) {
+            return false;
+        }
+        if (numberOfEnrollment < maxNumberOfAttendees) {
+            return false;
+        }
+        return true;
+    }
+}
+
+public class MoimTest {
+    @Test
+    public void isFull() {
+        Moim moim = new Moim();
+        moim.maxNumberOfAttendees = 100;
+        moim.numberOfEnrollment = 10;
+
+        Assert.assertFalse(moim.isEnrollmentFull());
+    }
+}
+~~~
+
+- 테스트 코드가 확인한 소스 코드를 %
+    - JaCoCo를 써보자.
+    - (gradle 적용방법) https://docs.gradle.org/current/userguide/jacoco_plugin.html
+    - https://www.eclemma.org/jacoco/trunk/doc/index.html
+    - http://www.semdesigns.com/Company/Publications/TestCoverage.pdf
+
+~~~
+plugins {
+    id 'jacoco'
+}
+
+jacoco {
+    toolVersion = "0.8.5"
+    reportsDir = file("$buildDir/customJacocoReportDir")
+}
+
+jacocoTestReport {
+    reports {
+        xml.enabled false
+        csv.enabled false
+        html.destination file("${buildDir}/jacocoHtml")
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.9
+            }
+        }
+    }
+}
+~~~
+
+jacoco run을 실행하면 해당 코드의 테스트가 진행되지 않은 부분을 알려줍니다.
+이런 코드는 어떻게 만들어 지는지 알아보도록 하겠습니다.
+
+바이트 코드를 읽어서 코드 커버리지를 챙겨야 하는 부분을 하나씩 체크를 합니다.
+코드가 실행이 될 때 그 중에서 몇개를 지나갔는지 체크를 합니다.
+다음 비교를 합니다 어디를 지나갔고 어디를 안지나 갔는지 계산도해서 출력합니다.
+
+jacocoTestCoverageVerification 평가 점수가 90% 이상일 경우 통과되도록 설정도 존재함
+
+## 바이트코드 조작 예제
+
+~~~
+public class Moja {
+    public Moja() {}
+
+    public String pullOut() {
+        return "";
+    }
+}
+
+public class ShowAction {
+    public ShowAction() {}
+
+    public static void main(String[] args) {
+        Moja moja = new Moja();
+        System.out.println("Show Action : " + moja.pullOut());
+    }
+}
+~~~
+
+아무것도 존재하지 않는 Moja.class의 pullOut 메소드에서 값을 바이트 코드를 조작해서 출력해보도록 하겠습니다.
+
+- 바이트코드 조작 라이브러리
+    - ASM: https://asm.ow2.io/ (visit 패턴, adapter 패턴을 모르면 쓰기 어려움)
+    - Javassist: https://www.javassist.org/
+    - ByteBuddy: https://bytebuddy.net/#/ (추천)
+
+## ByteBuddy
+
+의존성 추가
+
+~~~
+compile group: 'net.bytebuddy', name: 'byte-buddy', version: '1.10.6'
+~~~
+
+~~~
+public class ShowAction {
+    public ShowAction() {
+    }
+
+    public static void main(String[] args) throws IOException {
+        // 1.
+        ByteBuddy byteBuddy = new ByteBuddy();
+        byteBuddy.redefine(Moja.class)    // Moja class를 재 정의합니다.
+                .method(named("pullOut")) // Moja class 선언된 pullOut 메소드를 선택
+                .intercept(FixedValue.value("Action!!")) // pullOut 메소드의 값을 변경
+                .make()
+                .saveIn(new File("/Users/kimminseok/git-repository/Java/바이트코드 조작/project/build/classes/java/main/")); // 폴더를 지정합니다.
+
+        // 2.
+        Moja moja = new Moja();
+        System.out.println("Show Action : " + moja.pullOut());
+    }
+}
+~~~
+
+순서대로 2번을 주석 후 실행하면 바이트코드가 변경됩니다.
+1번 주석 후 실행하면 변경된 바이트코드 class 실행됩니다.
+컴파일을 하지않는이상 변경된 정보로 출력됩니다.
+
+## javaagent 실습
+
+
+- Javaagent JAR 파일 만들기
+    - https://docs.oracle.com/javase/8/docs/api/java/lang/instrument/package-summary.html
+    - 붙이는 방식은 시작시 붙이는 방식 premain과 런타임 중에 동적으로 붙이는 방식 agentmain이 있다.
+    - Instrumentation을 사용한다.
+
+- Javaagent 붙여서 사용하기
+    - 클래스로더가 클래스를 읽어올 때 javaagent를 거쳐서 변경된 바이트코드를 읽어들여 사용한다.
+
+바이트코드가 변경되기전 작업을 해주는 에이전트(Agent) 대리인을 구현합니다.
+Agent 프로젝트를 하나 생성합니다.
+
+> project-agent
+
+의존성을 추가합니다.
+
+~~~
+compile group: 'net.bytebuddy', name: 'byte-buddy', version: '1.10.6'
+~~~
+
+~~~
+public class Applcation {
+    public static void premain(String agentArgs, Instrumentation inst) {
+        new AgentBuilder.Default() // AgentBuilder 기본 빌더를 가져옵니다.
+                .type(ElementMatchers.any()) // 아무 타입을 가져옵니다.
+                .transform((builder, typeDescription, classLoader, module) -> builder
+                        .method(named("pullOut"))
+                        .intercept(FixedValue.value("Action!!")))
+                .installOn(inst); // 인스트루먼테이션(instrumentation) 저장
+    }
+}
+~~~
+
+해당 agent를 JAR로 패키징 하면서 파일 내부에 특정한 설정값을 넣어줘야 합니다.
+
+[Manifest Attributes](https://docs.oracle.com/javase/8/docs/api/java/lang/instrument/package-summary.html)
+
+필수로 넣어야하는 설정값 
+- Premain-Class (에이전트가 지정된 경우이 속성은 에이전트 클래스를 지정
+- Can-Redefine-Classes (에이전트에 필요한 클래스를 재정의하는 기능
+- Can-Retransform-Classes (에이전트에 필요한 클래스를 다시 변환하는 기능
+
+[Customize JAR manifest entries with Maven/Gradle](http://andresalmiray.com/customize-jar-manifest-entries-with-maven-gradle/)
+
+~~~
+jar {
+    manifest {
+        attributes(
+                'Built-By': System.properties['user.name'],
+                'Build-Timestamp': new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date()),
+                'Build-Revision': versioning.info.commit,
+                'Created-By': "Gradle ${gradle.gradleVersion}",
+                'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+                'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
+
+                // custom code
+                'Premain-Class': "me.whiteship.Application",
+                'Can-Redefine-Classes': true,
+                'Can-Retransform-Classes': true
+        )
+    }
+}
+~~~
+
+agent 프로젝트를 JAR 패키징 합니다.
+JAR 파일이 저장된 위치정보를 복사합니다.
+
+> project-byte
+
+~~~
+public class Moja {
+    public Moja() {
+    }
+
+    public String pullOut() {
+        return "No Update";
+    }
+}
+
+public class ShowAction {
+    public ShowAction() {
+    }
+
+    public static void main(String[] args) {
+        Moja moja = new Moja();
+        System.out.println("Show Action : " + moja.pullOut());
+    }
+}
+
+결과 -
+
+Show Action : Action!!
+~~~
+
+Edit Configurations -> VM options -> -javaagent:/Users/kimminseok/git-repository/Java/bytecode/project-byte/build/libs/project-byte-1.0-SNAPSHOT.jar
+
+-javaagent: 위치에 agent JAR 파일 경로를 붙여넣기하고 run을 실행하면
+바이트코드가 조작되어 출력됩니다.
+
+Project-1 project-byte 프로젝트의 바이트코드를 확인하면 값이 변경되지 않은것을 확인할 수 있습니다.
+이는 클래스가 로딩이 될때 바이트코드가 변경되기 때문에 메모리 내부에서는 값이 변경되어 있습니다.
+
+이를 Transparent 비 침투적인 기존 코드를 건드리지않습니다.
+
+# 바이트코드 조작 정리
+
+- 프로그램 분석
+    - 코드에서 버그 찾는 툴
+    - 코드 복잡도 계산
+- 클래스 파일 생성
+    - 프록시 (원래 사용하는 코드 대신에 사용하는 프록시 코드를 만드는 경우)
+    - 특정 API 호출 접근 제한 (특정 조건에만 실행하도록 조건을 부여할 수도 있습니다.)
+    - 스칼라 같은 언어의 컴파일러
+- 그밖에도 자바 소스 코드 건리지 않고 코드 변경이 필요한 여러 경우에 사용할 수 있다.
+    - 프로파일러 (newrelic) 에플리케이션을 실행할 때 자바 에이전트로 우리가 사용하는 에플리케이션이 메모리를 얼마나 사용하고 있는지 또는 쓰레드는 몇개인지 쓰레드의 활성화 정보 등등 각종 성능 분석할 수 있는 툴
+    - 최적화
+    - 로깅
+
+- 스프링이 컴포넌트 스캔을 하는 방법 (asm) 스프링이 바이트코드를 어떻게 조작하고 있는가
+    - 컴포넌트 스캔으로 빈으로 등록할 후보 클래스 정보를 찾는데 사용
+    - ClassPathScanningCandidateComponentProvider -> SimpleMetadataReader
+    - ClassReader와 Visitor 사용해서 클래스에 있는 메타 정보를 읽어온다.
+
+스프링의 경우 @Repository, @Component, @Bean.. 에노테이션이 붙어있는 클래스를 찾아서
+Bean으로 등록을 해줘야 하는데 찾는과정을 해주는 클래스가 ClassPathScanningCandidateComponentProvider.class
+해당 클래스에서 메타정보를 불러오는 클래스 SimpleMetadataReader.class
+
+SimpleMetadataReader에서 ClassReader랑 Visiter 구현체를 사용해서 클래스, 메소드에 붙어있는 에노테이션 정보를 추출해오는데 사용하고 있습니다.
+
+~~~
+SimpleMetadataReader(Resource resource, @Nullable ClassLoader classLoader) throws IOException {
+    SimpleAnnotationMetadataReadingVisitor visitor = new SimpleAnnotationMetadataReadingVisitor(classLoader);
+    getClassReader(resource).accept(visitor, PARSING_OPTIONS);
+    this.resource = resource;
+    this.annotationMetadata = visitor.getMetadata();
+}
+~~~
+
+## 참고
+
+- https://www.youtube.com/watch?v=39kdr1mNZ_s
+- ASM, Javassist, ByteBuddy, CGlib
