@@ -25,9 +25,11 @@
     - [3. javaagent 실습](#javaagent-실습)
 - [5. 바이트코드 조작 정리](#바이트코드-조작-정리)
     - [1. 참고](#참고)
-
+- [6. 리플렉션 API 클래스 정보 조회](#리플렉션-API-클래스-정보-조회)
 
 # 자바 JVM JDK 그리고 JRE
+
+![JDK 구조](./images/jdk.png)
 
 - JDK
     - JRE
@@ -117,10 +119,10 @@ public class WhiteShip {
 
 ## 메모리
 
-- 메모스 영역에는 `클래스 수준의 정보 (클래스 이름, 부모 클래스 이름, 메소드, 변수) 저장.` 공유 자원이다.
+- 메모리 영역에는 `클래스 수준의 정보 (클래스 이름, 부모 클래스 이름, 메소드, 변수) 저장.` 공유 자원이다.
 - 힙 영역에는 `객체를 저장.` 공유 자원이다.
 - 스택 영역에는 `쓰레드 마다 런타임 스택`을 만들고, 그 안에 `메소드 호출을 스택 프레임이라 부르는 블럭으로 쌓는다.` 쓰레드 `종료하면 런타임 스택도 사라진다.`
-- PC(Program Counter) 레지스터: `쓰레드 마다 쓰레드 내 현재 실행할 스택 프레임을 가리키는 포인터가 생성`s된다.
+- PC(Program Counter) 레지스터: `쓰레드 마다 쓰레드 내 현재 실행할 스택 프레임을 가리키는 포인터가 생성`된다.
 - 네이티브 메소드 스택
 - https://javapapers.com/core-java/java-jvm-run-time-data-areas/#Program_Counter_PC_Register
 
@@ -574,3 +576,176 @@ SimpleMetadataReader(Resource resource, @Nullable ClassLoader classLoader) throw
 
 - https://www.youtube.com/watch?v=39kdr1mNZ_s
 - ASM, Javassist, ByteBuddy, CGlib
+
+# 리플렉션 API 클래스 정보 조회
+
+> Book.class
+
+~~~
+public class Book {
+    private static String a = "A";
+
+    private static final String b = "B";
+
+    private String c = "C";
+
+    public String d = "D";
+
+    protected String e = "E";
+
+    public Book() {
+    }
+
+    public Book(String c, String d, String e) {
+        this.c = c;
+        this.d = d;
+        this.e = e;
+    }
+
+    private void f() {
+        System.out.println("F");
+    }
+
+    public void g() {
+        System.out.println("G");
+    }
+
+    public int h() {
+        return 1000;
+    }
+}
+~~~
+
+> MyInterface.interface
+
+~~~
+public interface MyInterface { }
+~~~
+
+> MyBook.class
+
+~~~
+public class MyBook extends Book implements MyInterface { }
+~~~
+
+> App.class
+
+~~~
+public class App {
+
+    public static void main(String[] args) throws ClassNotFoundException {
+        /**
+         * Book.class, MyBook.class, MyInterface.interface 정보에 접근하려면 Class<T> 타입이 필요합니다.
+         *
+         * Book.class 로딩이 끝나면 class Type의 인스턴스를 만들어서 힙 영역에 넣습니다.
+         * 이러한 인스턴스는 class 로딩만 해도 인스턴스가 생성이 됩니다.
+         * 그래서 bookClass 를 바로 사용할 수 있습니다.
+         * Class 타입의 인스턴스를 가져오는 방법
+         * */
+        Class<Book> bookClass = Book.class;
+
+        /**
+         * 이미 인스턴스가 존재하는 경우 getClass를 사용하여 가져올 수도 있습니다.
+         * */
+        Book                  book   = new Book();
+        Class<? extends Book> aClass = book.getClass();
+
+        /**
+         * 아무것도 모르고 문자열만 아는 상태인 경우
+         * */
+        Class<?> aClass1 = Class.forName("me.whiteship.Book");
+
+        /**
+         * Book.class 의 Field 들을 불러온다면 getFields 메소드를 활용하여 public 값을 가져올 수 있습니다.
+         * Arrays.stream 을 활용하여 해당 Class 의 Field 값을 출력하면
+         * getFields 메소드는 결과는 "public java.lang.String me.whiteship.Book.d" 하나만 출력됩니다.
+         * */
+        System.out.println(" ");
+        System.out.println("===== fields =====");
+        Field[] fields = bookClass.getFields();
+        Arrays.stream(fields).forEach(System.out::println);
+
+        /**
+         * 접근 지시자 상관없이 모든값을 가져오는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== declaredFields =====");
+        Field[] declaredFields = bookClass.getDeclaredFields();
+        Arrays.stream(declaredFields).forEach(System.out::println);
+
+        /**
+         * 필드값의 값을 참조하는 방법
+         * new 인스턴스는 필수 입니다.
+         * */
+        System.out.println(" ");
+        System.out.println("===== declaredFields get field =====");
+        Arrays.stream(declaredFields).forEach(field -> {
+            try {
+                /* setAccessible true 없이 실행하면 접근할 수 없는 값에 접근하려해서 에러가 발생합니다. */
+                field.setAccessible(true);
+                System.out.printf("%s %s\n", field, field.get(book));
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        });
+
+        /**
+         * 필드의 메소드를 가져오는 방법
+         * 상속받은 정보까지 전부 불러옵니다.
+         * */
+        System.out.println(" ");
+        System.out.println("===== getMethods =====");
+        Method[] methods = bookClass.getMethods();
+        Arrays.stream(methods).forEach(System.out::println);
+
+        /**
+         * 필드의 상속자를 가져오는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== getConstructors =====");
+        Constructor<?>[] constructors = bookClass.getConstructors();
+        Arrays.stream(constructors).forEach(System.out::println);
+
+        /**
+         * Super 상위 클래스 가져오는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== getConstructors =====");
+        Class<? super MyBook> superclass = MyBook.class.getSuperclass();
+        System.out.println(superclass);
+
+        /**
+         * Super 인터페이스 가져오는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== getInterfaces =====");
+        Class<?>[] interfaces = MyBook.class.getInterfaces();
+        Arrays.stream(interfaces).forEach(System.out::println);
+
+        /**
+         * 각각의 안에는 다양한 기능들이 존재합니다.
+         * getModifiers 으로 값 검증이 가능합니다.
+         * 필드권한을 확인하는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== getModifiers field =====");
+        Arrays.stream(Book.class.getDeclaredFields()).forEach(field -> {
+            /* Modifiers 제공하는 static 메소드를 사용하면 필드 권한을 확인할 수 있습니다. */
+            int modifiers = field.getModifiers();
+            System.out.println(field);
+            System.out.println(Modifier.isPrivate(modifiers));
+            System.out.println(Modifier.isStatic(modifiers));
+        });
+
+        /**
+         * getModifiers
+         * 메소드의 파라미터 타입, 갯수 등등 여러가지 정보를 알수 있습니다.
+         * */
+        System.out.println(" ");
+        System.out.println("===== getModifiers method =====");
+        Arrays.stream(Book.class.getMethods()).forEach(field -> {
+            System.out.println(field.getParameterTypes());
+        });
+    }
+}
+~~~
