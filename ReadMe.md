@@ -30,6 +30,8 @@
     - [1. 인터페이스 어노테이션 상속](#인터페이스-어노테이션-상속)
     - [2. 어노테이션 필드의 값을 참조하는 방법](#어노테이션-필드의-값을-참조하는-방법)
 - [8. 클래스 정보 수정 또는 실행](#클래스-정보-수정-또는-실행)
+- [9. 나만의 DI 프레임워크 만들기](#나만의-DI-프레임워크-만들기)
+- [10. 리플렉션 정리](#리플렉션-정리)
 
 # 자바 JVM JDK 그리고 JRE
 
@@ -983,3 +985,135 @@ public class App {
     }
 }
 ~~~
+
+# 나만의 DI 프레임워크 만들기
+
+@Inject 라는 애노테이션 만들어서 필드 주입 해주는 컨테이너 서비스 만들기
+
+~~~
+public class BookService {
+    @Inject
+    BookRepository bookRepository;
+}
+~~~
+
+ContainerService.java
+public static <T> T getObject(T classType)
+classType에 해당하는 타입의 객체를 만들어 준다.
+단, 해당 객체의 필드 중에 @Inject가 있다면 해당 필드도 같이 만들어 제공한다.
+
+> Inject.annotation
+
+~~~
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Inject { }
+~~~
+
+> BookRepository.class
+
+~~~
+public class BookRepository { }
+~~~
+
+> BookService.class
+
+~~~
+public class BookService {
+    @Inject
+    BookRepository bookRepository;
+}
+~~~
+
+> ContainerService.class
+
+~~~
+public class ContainerService {
+
+    /**
+     * 제네릭 메소드 메소드의 파라미터로 넘겨주는 Class<T> classType 으로 return 을 하고싶을 때 사용
+     */
+    public static <T> T getObject(Class<T> classType) {
+        T instance = createinstance(classType);
+
+        /**
+         * classType 의 모든 필드를 돌면서 Inject 어노테이션이 존재하는지 확인합니다.
+         * */
+        Arrays.stream(classType.getDeclaredFields()).forEach(field -> {
+            Inject annotation = field.getAnnotation(Inject.class);
+
+            /* 어노테이션이 존재한다면 */
+            if (annotation != null) {
+                /**
+                 *  BookService 의 Type 은 BookRepository 입니다.
+                 *  BookRepository 인스턴스를 생성한 후 필드에 설정합니다.
+                 */
+                Object fieldInstance = createinstance(field.getType());
+                field.setAccessible(true);
+                try {
+                    field.set(instance, fieldInstance);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        return instance;
+    }
+
+    /**
+     * 파라미터로 받은 Class<T> classType
+     */
+    private static <T> T createinstance(Class<T> classType) {
+        try {
+            return classType.getConstructor(null).newInstance();
+        } catch (InstantiationException | NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+~~~
+
+검증
+
+> ContainerServiceTest.class
+
+~~~
+public class ContainerServiceTest {
+
+    /* Inject 어노테이션을 사용하지 않은 메소드 */
+    @Test
+    public void getObject_BookRepository() {
+        BookRepository bookRepository = ContainerService.getObject(BookRepository.class);
+        assertNotNull(bookRepository);
+    }
+
+    @Test
+    public void getObject_BookService() {
+        BookService bookService = ContainerService.getObject(BookService.class);
+        assertNotNull(bookService);
+        assertNotNull(bookService.bookRepository);
+    }
+}
+~~~
+
+# 리플렉션 정리
+
+- 리플렉션 사용시 주의할 것
+    - 지나친 사용은 성능 이슈를 야기할 수 있다. 반드시 필요한 경우에만 사용할 것
+    - 컴파일 타임에 확인되지 않고 런타임 시에만 발생하는 문제를 만들 가능성이 있다.
+    - 접근 지시자를 무시할 수 있다.
+
+- 스프링
+    - 의존성 주입
+    - MVC 뷰에서 넘어온 데이터를 객체에 바인딩 할 때
+
+- 하이버네이트
+    - @Entity 클래스에 Setter가 없다면 리플렉션을 사용한다.
+
+- JUnit
+    - https://junit.org/junit5/docs/5.0.3/api/org/junit/platform/commons/util/ReflectionUtils.html
+
+- 참고
+    - https://docs.oracle.com/javase/tutorial/reflect/index.html
+
+    
