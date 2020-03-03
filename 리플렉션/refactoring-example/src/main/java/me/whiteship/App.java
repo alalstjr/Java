@@ -124,5 +124,43 @@ public class App {
         Arrays.stream(Book.class.getMethods()).forEach(field -> {
             System.out.println(field.getParameterTypes());
         });
+
+        /**
+         * getAnnotation
+         * */
+        System.out.println(" ");
+        System.out.println("===== getAnnotation =====");
+        Arrays.stream(Book.class.getAnnotations()).forEach(System.out::println);
+
+        /**
+         * 상속받은 인터페이스 getAnnotation
+         * */
+        System.out.println(" ");
+        System.out.println("===== 상속 getAnnotation =====");
+        Arrays.stream(MyBook.class.getAnnotations()).forEach(System.out::println);
+
+        /**
+         * MyBook 인터페이스에만 붙어있는 getAnnotation
+         * */
+        System.out.println(" ");
+        System.out.println("===== getDeclaredFields =====");
+        Arrays.stream(MyBook.class.getDeclaredFields()).forEach(System.out::println);
+
+        /**
+         * 어노테이션 필드의 값을 참조하는 방법
+         * */
+        System.out.println(" ");
+        System.out.println("===== 어노테이션 필드의 값을 참조하는 방법 =====");
+        Arrays.stream(Book.class.getAnnotations()).forEach(annotation -> {
+            /*
+             * 해당 어노테이션이 개발자가 원하는 어노테이션이라면 타입을 변경합니다.
+             * 다음 값을 직접 참조할 수 있습니다.
+             */
+            if (annotation instanceof MyAnnotation) {
+                MyAnnotation myAnnotation = (MyAnnotation) annotation;
+                System.out.println(myAnnotation.value());
+                System.out.println(myAnnotation.number());
+            }
+        });
     }
 }

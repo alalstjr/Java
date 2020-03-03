@@ -26,6 +26,9 @@
 - [5. 바이트코드 조작 정리](#바이트코드-조작-정리)
     - [1. 참고](#참고)
 - [6. 리플렉션 API 클래스 정보 조회](#리플렉션-API-클래스-정보-조회)
+- [7. 애노테이션과 리플렉션](#애노테이션과-리플렉션)
+    - [1. 인터페이스 어노테이션 상속](#인터페이스-어노테이션-상속)
+    - [2. 어노테이션 필드의 값을 참조하는 방법](#어노테이션-필드의-값을-참조하는-방법)
 
 # 자바 JVM JDK 그리고 JRE
 
@@ -579,6 +582,25 @@ SimpleMetadataReader(Resource resource, @Nullable ClassLoader classLoader) throw
 
 # 리플렉션 API 클래스 정보 조회
 
+- 리플렉션의 시작은 Class<T>
+    - https://docs.oracle.com/javase/8/docs/api/java/lang/Class.html
+
+- Class<T>에 접근하는 방법
+    - 모든 클래스를 로딩 한 다음 Class<T>의 인스턴스가 생긴다. “타입.class”로 접근할 수 있다.
+    - 모든 인스턴스는 getClass() 메소드를 가지고 있다. “인스턴스.getClass()”로 접근할 수 있다.
+    - 클래스를 문자열로 읽어오는 방법
+    - Class.forName(“FQCN”)
+    - 클래스패스에 해당 클래스가 없다면 ClassNotFoundException이 발생한다.
+
+- Class<T>를 통해 할 수 있는 것
+    - 필드 (목록) 가져오기
+    - 메소드 (목록) 가져오기
+    - 상위 클래스 가져오기
+    - 인터페이스 (목록) 가져오기
+    - 애노테이션 가져오기
+    - 생성자 가져오기
+    - ...
+
 > Book.class
 
 ~~~
@@ -748,4 +770,107 @@ public class App {
         });
     }
 }
+~~~
+
+# 애노테이션과 리플렉션
+
+- 중요 애노테이션
+    - @Retention: 해당 애노테이션을 언제까지 유지할 것인가? 소스, 클래스, 런타임
+    - @Inherit: 해당 애노테이션을 하위 클래스까지 전달할 것인가?
+    - @Target: 어디에 사용할 수 있는가?
+
+- 리플렉션
+    - getAnnotations(): 상속받은 (@Inherit) 애노테이션까지 조회
+    - getDeclaredAnnotations(): 자기 자신에만 붙어있는 애노테이션 조회
+
+> MyAnnotation.annotation
+
+~~~
+/**
+ * Annotation 은 주석과 마찬가지 입니다.
+ * 기본적으로 class, 소스 까지는 정보가 남습니다.
+ * 바이트 코드를 로딩 했을 때 메모리 상에는 남아있지 않습니다.
+ *
+ * 하지만 RunTime 까지도 정보를 유지하고 싶다면 Retention 사용하면 됩니다.
+ * 기본값은 CLASS 입니다.
+ *
+ * 확인하려면 javap -c -v [class 경로]
+ * */
+@Retention(RetentionPolicy.RUNTIME)
+/**
+ * Target 사용하면 Annotation 사용 위치를 제어할 수 있습니다.
+ * */
+@Target({ElementType.TYPE, ElementType.FIELD})
+public @interface MyAnnotation {
+    /**
+     * default 값이 선언되지 않은 경우 값 선언은 필수로 받아야 합니다.
+     * */
+    int number();
+
+    String name() default "jjunpro";
+
+    /**
+     * 만약 key 값의 이름을 value 라고 주면 어노테이션 선언시
+     * @MyAnnotation(100) 따로 key 이름값을 주지않고 선언할 수 있습니다.
+     * 여러개의 속성을 선언할 때는 key 값을 무조건 주어야 합니다.
+     * */
+    String value() default "value";
+}
+~~~
+
+> App.class
+
+~~~
+/**
+* getAnnotation
+* */
+System.out.println(" ");
+System.out.println("===== getAnnotation =====");
+Arrays.stream(Book.class.getAnnotations()).forEach(System.out::println);
+~~~
+
+## 인터페이스 어노테이션 상속
+
+MyBook.interface 가 Book.class 를 상속받고 있습니다.
+그러면 MyBook 에서도 getAnnotation 을 호출하면 Book 의 붙어있는 어노테이션까지 가져오는 방법이 있습니다.
+어노테이션을 상속이 되는 어노테이션으로 선언해주어야 합니다.
+@Inherited 을 붙여줍니다.
+
+> App.class
+
+~~~
+/**
+* 상속받은 인터페이스 getAnnotation
+* */
+System.out.println(" ");
+System.out.println("===== 상속 getAnnotation =====");
+Arrays.stream(MyBook.class.getAnnotations()).forEach(System.out::println);
+
+/**
+* MyBook 인터페이스에만 붙어있는 getAnnotation
+* */
+System.out.println(" ");
+System.out.println("===== getDeclaredFields =====");
+Arrays.stream(MyBook.class.getDeclaredFields()).forEach(System.out::println);
+~~~
+
+## 어노테이션 필드의 값을 참조하는 방법
+
+~~~
+/**
+* 어노테이션 필드의 값을 참조하는 방법
+* */
+System.out.println(" ");
+System.out.println("===== 어노테이션 필드의 값을 참조하는 방법 =====");
+Arrays.stream(Book.class.getAnnotations()).forEach(annotation -> {
+    /*
+        * 해당 어노테이션이 개발자가 원하는 어노테이션이라면 타입을 변경합니다.
+        * 다음 값을 직접 참조할 수 있습니다.
+        */
+    if (annotation instanceof MyAnnotation) {
+        MyAnnotation myAnnotation = (MyAnnotation) annotation;
+        System.out.println(myAnnotation.value());
+        System.out.println(myAnnotation.number());
+    }
+});
 ~~~

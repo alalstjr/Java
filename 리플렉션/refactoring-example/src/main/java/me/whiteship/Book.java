@@ -1,5 +1,6 @@
 package me.whiteship;
 
+@MyAnnotation(number = 100)
 public class Book {
     private static String a = "A";
 
