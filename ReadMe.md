@@ -1262,5 +1262,106 @@ public class BookServiceTest {
 위처럼 사용한다면 코드가 계속해서 커질 수도 있고 또는 해당 프록시를 감싸는 프록시가 생길 수도있습니다.
 그래서 Spring AOP가 제공하는 기술이 존재합니다.
 
+# 클래스의 프록시가 필요하다면?
+ 
+서브 클래스를 만들 수 있는 라이브러리를 사용하여 프록시를 만들 수 있다.
 
+- CGlib
+    - https://github.com/cglib/cglib/wiki
+    - 스프링, 하이버네이트가 사용하는 라이브러리
+    - 버전 호환성이 좋치 않아서 서로 다른 라이브러리 내부에 내장된 형태로 제공되기도 한다.
 
+~~~
+compile group: 'cglib', name: 'cglib', version: '3.3.0'
+~~~
+
+~~~
+    /**
+     * 클래스의 프록시
+     */
+    @Test
+    public void de() {
+        /* 프록시 handler 생성 */
+        MethodInterceptor handler = new MethodInterceptor() {
+            BookService bookService = new DefaultBookService();
+
+            @Override
+            public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy)
+                    throws Throwable {
+                return method.invoke(bookService, args);
+            }
+        };
+
+        BookService bookService = (BookService) Enhancer.create(BookService.class, handler);
+
+        Book book = new Book();
+        bookService.rent(book);
+    }
+~~~
+
+## byte-buddy 프록시 설정
+
+~~~
+compile group: 'net.bytebuddy', name: 'byte-buddy', version: '1.10.8'
+~~~
+
+- https://bytebuddy.net/#/
+- 바이트 코드 조작 뿐 아니라 런타임(다이나믹) 프록시를 만들 때도 사용할 수 있다.
+
+- 서브 클래스를 만드는 방법의 단점
+    - 상속을 사용하지 못하는 경우 프록시를 만들 수 없다.
+        - Private 생성자만 있는 경우
+        - Final 클래스인 경우
+    - 인터페이스가 있을 때는 인터페이스의 프록시를 만들어 사용할 것.
+
+~~~
+@Test
+public void da()
+        throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
+    /**
+        * BookService 의 서브클레스를 만들겠다. -> subclass().make()
+        * */
+    Class<? extends DefaultBookService> proxyClass = new ByteBuddy()
+            .subclass(DefaultBookService.class)
+            .method(named("rent")) // rent 메소드에만 적용이 됩니다.
+            .intercept(
+                    InvocationHandlerAdapter.of(new InvocationHandler() {
+                        DefaultBookService bookService = new DefaultBookService();
+
+                        @Override
+                        public Object invoke(Object o, Method method, Object[] args)
+                                throws Throwable {
+                            return method.invoke(bookService, args);
+                        }
+                    }))
+            .make()
+            .load(DefaultBookService.class.getClassLoader())
+            .getLoaded();
+
+    DefaultBookService bookService = proxyClass.getConstructor(null).newInstance();
+    Book        book        = new Book();
+    book.setTitle("book");
+
+    bookService.rent(book);
+}
+~~~
+
+> DefaultBookService.class
+
+~~~
+public class DefaultBookService {
+    public DefaultBookService() { }
+}
+~~~
+
+서브클래스를 못만드는 예제
+
+final 붙은 클레스
+
+~~~
+public final class DefaultBookService
+~~~
+
+~~~
+privte DefaultBookService() { }
+~~~
