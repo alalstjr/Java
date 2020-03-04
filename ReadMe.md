@@ -34,6 +34,7 @@
 - [10. 리플렉션 정리](#리플렉션-정리)
 - [11. 프록시 패턴](#프록시-패턴)
     - [1. 코드 예제](#코드-예제)
+- [12. 다이나믹 프록시 실습](#다이나믹-프록시-실습)
 
 # 자바 JVM JDK 그리고 JRE
 
@@ -1129,6 +1130,11 @@ public class ContainerServiceTest {
 - 클라이언트는 프록시를 거쳐서 리얼 서브젝트를 사용하기 때문에 프록시는 리얼 서브젝트에 대한 접근을 관리거나 부가기능을 제공하거나, 리턴값을 변경할 수도 있다.
 - 리얼 서브젠트는 자신이 해야 할 일만 하면서(SRP) 프록시를 사용해서 부가적인 기능(접근 제한, 로깅, 트랜잭션, 등)을 제공할 때 이런 패턴을 주로 사용한다.
 
+- 참고
+    - https://www.oodesign.com/proxy-pattern.html
+    - https://en.wikipedia.org/wiki/Proxy_pattern
+    - https://en.wikipedia.org/wiki/Single_responsibility_principle
+
 > 클라이언트 -> 프록시 -> 리얼 서브젝트
 
 `단일체계 원칙`을 지키려면 리얼 서브젝트에는 부가적인 서비스를 추가하는 것이 아니라 `기본적으로 처리해야 하는 작업만 존재해야 합니다.`
@@ -1198,4 +1204,63 @@ public class BookServiceTest {
 
 `클라이언트인 BookServiceTest` 가 `서브젝트인 BookService 타임으로 BookServiceProx 를 사용`하게 됩니다.
 프록시는 내부에서 `리얼 서브젝트 DefaultBookService 를 참조`하고 있습니다.
+
+# 다이나믹 프록시 실습
+
+에플리케이션이 실행되는 도중에 (런타임에) 특정 인터페이스들을 구현하는 클래스 또는 인스턴스를 만드는 기술
+
+- 더 자세한 설명
+    - “an application can use a dynamic proxy class to create an object that implements multiple arbitrary event listener interfaces”
+    - https://docs.oracle.com/javase/8/docs/technotes/guides/reflection/proxy.html
+
+> BookServiceTest.class
+
+~~~
+public class BookServiceTest {
+
+    /**
+     * 프록시를 런타임시 만들기 newProxyInstance() 메소드에 클레스로더 -> BookService.class.getClassLoader() Class[] 배열
+     * 인터페이스 목록이 필요합니다. 만들려는 프록시 인터페이스가 어떠한 인터페이스 타입의 구현체인지 알려줍니다. -> new Class[]{BookService.class}
+     * 해당 프록시의 메소드가 호출이 될 때 메소드 호출을 어떻게 처리할 것인지의 설명 -> InvocationHandler()
+     * <p>
+     * Object 타입으로 return 을 하므로 타입 케스팅이 필요합니다.
+     */
+    BookService bookService = (BookService) Proxy
+            .newProxyInstance(BookService.class.getClassLoader(), new Class[]{BookService.class},
+                    new InvocationHandler() {
+                        /* 리얼 서브젝트 */
+                        BookService bookService = new DefaultBookService();
+
+                        @Override
+                        public Object invoke(Object o, Method method, Object[] args)
+                                throws Throwable {
+                            /* if rent() 메소드에만 부가적인 기능을 적용하고 싶다면 */
+                            if(method.getName().equals("rent")) {
+                                System.out.println("======1");
+                                /* 기본적으로 실행되는 메소드가 실행됩니다. */
+                                Object invoke = method.invoke(bookService, args);
+                                System.out.println("======2");
+                                return invoke;
+                            }
+
+                            /* 기본적으로 실행되는 메소드가 실행됩니다. */
+                            return method.invoke(bookService, args);
+                        }
+                    });
+
+    @Test
+    public void di() {
+        Book book = new Book();
+        book.setTitle("spring");
+        bookService.rent(book);
+
+        bookService.returnBook(book);
+    }
+}
+~~~
+
+위처럼 사용한다면 코드가 계속해서 커질 수도 있고 또는 해당 프록시를 감싸는 프록시가 생길 수도있습니다.
+그래서 Spring AOP가 제공하는 기술이 존재합니다.
+
+
 

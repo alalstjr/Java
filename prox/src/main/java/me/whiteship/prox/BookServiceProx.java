@@ -14,4 +14,11 @@ public class BookServiceProx implements BookService {
         bookService.rent(book);
         System.out.println("=======");
     }
+
+    @Override
+    public void returnBook(Book book) {
+        System.out.println("=======");
+        bookService.returnBook(book);
+        System.out.println("=======");
+    }
 }
