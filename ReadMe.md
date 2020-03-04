@@ -32,6 +32,8 @@
 - [8. 클래스 정보 수정 또는 실행](#클래스-정보-수정-또는-실행)
 - [9. 나만의 DI 프레임워크 만들기](#나만의-DI-프레임워크-만들기)
 - [10. 리플렉션 정리](#리플렉션-정리)
+- [11. 프록시 패턴](#프록시-패턴)
+    - [1. 코드 예제](#코드-예제)
 
 # 자바 JVM JDK 그리고 JRE
 
@@ -1116,4 +1118,84 @@ public class ContainerServiceTest {
 - 참고
     - https://docs.oracle.com/javase/tutorial/reflect/index.html
 
-    
+# 스프링 데이터 JPA는 어떻게 동작할까?
+
+- 스프링 데이터 JPA에서 인터페이스 타입의 인스턴스는 누가 만들어 주는것인가?
+    - Spring AOP를 기반으로 동작하며 RepositoryFactorySupport에서 프록시를 생성한다.
+
+# 프록시 패턴
+
+- 프록시와 리얼 서브젝트가 공유하는 인터페이스가 있고, 클라이언트는 해당 인터페이스 타입으로 프록시를 사용한다.
+- 클라이언트는 프록시를 거쳐서 리얼 서브젝트를 사용하기 때문에 프록시는 리얼 서브젝트에 대한 접근을 관리거나 부가기능을 제공하거나, 리턴값을 변경할 수도 있다.
+- 리얼 서브젠트는 자신이 해야 할 일만 하면서(SRP) 프록시를 사용해서 부가적인 기능(접근 제한, 로깅, 트랜잭션, 등)을 제공할 때 이런 패턴을 주로 사용한다.
+
+> 클라이언트 -> 프록시 -> 리얼 서브젝트
+
+`단일체계 원칙`을 지키려면 리얼 서브젝트에는 부가적인 서비스를 추가하는 것이 아니라 `기본적으로 처리해야 하는 작업만 존재해야 합니다.`
+하지만 리얼 서브젝트에서 프록시의 `부가적인 서비스가 필요할 때` (접근지향, AOP적용, 트렌잭션, 로깅 ...) `모든 코드들을 전부 가져오면 코드가 지저분해지고 객체지향적으로 보기도 어렵습니다.`
+
+## 코드 예제
+
+프록시를 활용하여 rent 메세지 위 아래로 부가적인 메세지를 추가하는 경우
+
+- 서브젝트 : BookService
+
+~~~
+public interface BookService {
+    void rent(Book book);
+}
+~~~
+
+- 리얼 서브젝트 : DefaultBookService
+
+~~~
+@Service
+public class DefaultBookService implements BookService {
+    @Override
+    public void rent(Book book) {
+        System.out.println("rent : " + book.getTitle());
+    }
+}
+~~~
+
+- 프록시 : BookServiceProx
+
+프록시를 생성할 때 가장 먼저해줘야 하는것은 `프록시가 리얼 서브젝트를 가지고 있어야 합니다.`
+
+~~~
+public class BookServiceProx implements BookService {
+
+    BookService bookService;
+
+    public BookServiceProx(BookService bookService) {
+        this.bookService = bookService;
+    }
+
+    @Override
+    public void rent(Book book) {
+        System.out.println("=======");
+        bookService.rent(book);
+        System.out.println("=======");
+    }
+}
+~~~
+
+- 클라이언트 : BookServiceTest
+
+~~~
+public class BookServiceTest {
+
+    BookService bookService = new BookServiceProx(new DefaultBookService());
+
+    @Test
+    public void di() {
+        Book book = new Book();
+        book.setTitle("spring");
+        bookService.rent(book);
+    }
+}
+~~~
+
+`클라이언트인 BookServiceTest` 가 `서브젝트인 BookService 타임으로 BookServiceProx 를 사용`하게 됩니다.
+프록시는 내부에서 `리얼 서브젝트 DefaultBookService 를 참조`하고 있습니다.
+
