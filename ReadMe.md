@@ -35,6 +35,12 @@
 - [11. 프록시 패턴](#프록시-패턴)
     - [1. 코드 예제](#코드-예제)
 - [12. 다이나믹 프록시 실습](#다이나믹-프록시-실습)
+- [13. 클래스의 프록시가 필요하다면?](#클래스의-프록시가-필요하다면?)
+    - [1. byte-buddy 프록시 설정](#byte-buddy-프록시-설정)
+- [14. 롬복(ProjectLombok) 작동 원리](#롬복(ProjectLombok)-작동-원리)
+- [15. 애노테이션 프로세서](#애노테이션-프로세서)
+    - [1. 코드 예제](#코드-예제)
+
 
 # 자바 JVM JDK 그리고 JRE
 
@@ -1362,6 +1368,175 @@ final 붙은 클레스
 public final class DefaultBookService
 ~~~
 
+기본생성자가 private 접근권한인 경우
+
 ~~~
-privte DefaultBookService() { }
+private DefaultBookService() { }
 ~~~
+
+# 롬복(ProjectLombok) 작동 원리
+
+- Lombok
+    - @Getter, @Setter, @Builder 등의 애노테이션과 애노테이션 프로세서를 제공하여 표준적으로 작성해야 할 코드를 개발자 대신 생성해주는 라이브러리.
+
+- 사용법
+    - 의존성 추가
+    - IntelliJ lombok 플러그인 설치
+    - IntelliJ Annotation Processing 옵션 활성화
+
+- 롬복 동작 원리
+    - 컴파일 시점에 `애노테이션 프로세서`를 사용하여 `소스코드의 AST(abstract syntax tree)를 조작`한다.
+    - 애노테이션 프로세서는 바이트코드를 참조만 할뿐 직접 코드를 수정할 순 없습니다. 하지만 롬복은 TypeElement 를 수정하여 바이트 코드를 직접 수정합니다. 
+    이는 해킹에 속하며 내부 API 자바의 버전이 올라가면 언제나 변경될 수 있는 부분입니다.
+
+- 논란 거리
+    - 공개된 API가 아닌 컴파일러 내부 클래스를 사용하여 기존 소스 코드를 조작한다.
+    - 특히 이클립스의 경우엔 java agent를 사용하여 컴파일러 클래스까지 조작하여 사용한다. 해당 클래스들 역시 공개된 API가 아니다보니 버전 호환성에 문제가 생길 수 있고 언제라도 그런 문제가 발생해도 이상하지 않다.
+    - 그럼에도 불구하고 엄청난 편리함 때문에 널리 쓰이고 있으며 대안이 몇가지 있지만 롬복의 모든 기능과 편의성을 대체하진 못하는 현실이다.
+- AutoValue
+    - https://github.com/google/auto/blob/master/value/userguide/index.md
+- Immutables
+    - https://immutables.github.io
+
+- 참고
+    - https://docs.oracle.com/javase/8/docs/api/javax/annotation/processing/Processor.html
+    - https://projectlombok.org/contributing/lombok-execution-path
+    - https://stackoverflow.com/questions/36563807/can-i-add-a-method-to-a-class-from-a-compile-time-annotation
+
+# 애노테이션 프로세서
+
+- Processor 인터페이스
+    - 여러 라운드(rounds)에 거쳐 소스 및 컴파일 된 코드를 처리 할 수 있다.
+
+- 유틸리티
+    - AutoService: 서비스 프로바이더 레지스트리 생성기
+
+~~~
+<dependency>
+  <groupId>com.google.auto.service</groupId>
+  <artifactId>auto-service</artifactId>
+  <version>1.0-rc6</version>
+</dependency>
+~~~
+
+~~~
+@AutoService(Processor.class)
+public class MagicMojaProcessor extends AbstractProcessor {
+...
+}
+~~~
+
+컴파일 시점에 애노테이션 프로세서를 사용하여 META-INF/services/javax.annotation.processor.Processor 파일 자동으로 생성해 줌.
+
+- ServiceProvider
+    - https://itnext.io/java-service-provider-interface-understanding-it-via-code-30e1dd45a091
+
+- 참고
+    - http://hannesdorfmann.com/annotation-processing/annotationprocessing101
+    - http://notatube.blogspot.com/2010/12/project-lombok-creating-custom.html
+    - https://medium.com/@jintin/annotation-processing-in-java-3621cb05343a
+    - https://medium.com/@iammert/annotation-processing-dont-repeat-yourself-generate-your-code-8425e60c6657
+    - https://docs.oracle.com/javase/7/docs/technotes/tools/windows/javac.html#processing
+
+## 코드 예제
+
+> 라이브러리 프로젝트 1
+
+> Magic.annotation
+
+~~~
+/**
+ * 컴파일 전까지만 필요한 어노테이션
+ * */
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.SOURCE)
+public @interface Magic { }
+~~~
+
+> MagicMojaProcesser.class
+
+~~~
+/**
+ * AutoService 어노테이션 등록으로 자동으로 resources.META_INF.services/javax.annotation.processing.Processor 파일을
+ * 등록해줍니다.
+ */
+@AutoService(Processor.class)
+public class MagicMojaProcesser extends AbstractProcessor {
+
+    /* 해당 프로세서가 처리할 어떤 어노테이션인지 명시해주는 메소드 */
+    @Override
+    public Set<String> getSupportedAnnotationTypes() {
+        return Set.of(Magic.class.getName());
+    }
+
+    /* 지원하는 소스코드의 버전을 결정하는 메소드 */
+    @Override
+    public SourceVersion getSupportedSourceVersion() {
+        return SourceVersion.latestSupported();
+    }
+
+    /**
+     * true 를 return 한면 어노테이션 타입을 처리한것이 되므로 다음 프로세서들 한테 해당 어노테이션을 처리하라고 전달하지 않습니다. Magic 어노테이션을 해당
+     * 프로세서에서만 처리할것이므로 true 를 반환합니다.
+     */
+    @Override
+    public boolean process(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
+        /* Magic 어노테이션을 가지고있는 엘리먼트를 를 가져옵니다. */
+        Set<? extends Element> elements = roundEnvironment
+                .getElementsAnnotatedWith(Magic.class);
+
+        /*
+         * 여러 TypeElement 돌면서 조건을 체크합니다.
+         * Magic 어노테이션을 인터페이스에만 붙여서 사용하기를 원합니다.
+         */
+        for (Element element : elements) {
+            /*
+             * ElementKind 활용하면 element 의 타입을 알 수 있습니다.
+             * 인터페이스가 아닌경우 에러처리를 합니다.
+             */
+            if (element.getKind() != ElementKind.INTERFACE) {
+                processingEnv
+                        .getMessager()
+                        .printMessage(Kind.ERROR, "No Type" + element.getSimpleName());
+            } else {
+                processingEnv
+                        .getMessager()
+                        .printMessage(Kind.NOTE, "Processing" + element.getSimpleName());
+            }
+        }
+
+        return true;
+    }
+}
+~~~
+
+> 라이브러리 적용하는 프로젝트 2
+
+프로젝트 1 라이브러리 의존성 추가
+
+~~~
+<dependency>
+    <groupId>org.example</groupId>
+    <artifactId>magic-moja</artifactId>
+    <version>1.0-SNAPSHOT</version>
+</dependency>
+~~~
+
+~~~
+@Magic
+public interface Moja {
+    public String pullOut();
+}
+~~~
+
+프로젝트 1 라이브러리에서 interface 는 정상적으로 빌드되도록 프로세싱 했지만
+
+~~~
+@Magic
+public class MojaNone {
+}
+~~~
+
+class 에 @Magic 붙는것은 에러표시가 되도록 하였으므로 빌드시 컴파일 단에서 에러가 발생합니다.
+
+boilerplate
