@@ -9,7 +9,7 @@ public class App {
         /**
          * MojaFactory 에노테이션 프로세싱을 통해서 생성한 클레스
          * */
-        //Moja moja = new Magi();
-        //System.out.println(moja.pullOut());
+        Moja moja = new MagicMoja();
+        System.out.println(moja.pullOut());
     }
 }

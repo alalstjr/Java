@@ -1,13 +1,20 @@
 package org.example;
 
 import com.google.auto.service.AutoService;
+import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.JavaFile;
+import com.squareup.javapoet.MethodSpec;
+import com.squareup.javapoet.TypeSpec;
+import java.io.IOException;
 import java.util.Set;
 import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Filer;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic.Kind;
 
@@ -57,6 +64,50 @@ public class MagicMojaProcesser extends AbstractProcessor {
                 processingEnv
                         .getMessager()
                         .printMessage(Kind.NOTE, "Processing" + element.getSimpleName());
+            }
+
+            TypeElement typeElement = (TypeElement) element;
+            ClassName   className   = ClassName.get(typeElement);
+
+            /**
+             *  MethodSpec.methodBuilder() : 메소드를 하나 생성합니다.
+             *  addModifiers(Modifier.) : 접근권한을 설정합니다.
+             *  returns() : 반환 타입을 설정합니다.
+             *  addStatement() : 메소드 내부의 Statement 추가하기
+             */
+            MethodSpec pullOut = MethodSpec.methodBuilder("pullOut")
+                    .addModifiers(Modifier.PUBLIC)
+                    .returns(String.class)
+                    .addStatement("return $S", "Rabbit!")
+                    .build();
+
+            /**
+             *  classBuilder() : 생성되는 class의 이름을 설정합니다.
+             *  addModifiers() : 접근권한을 설정합니다.
+             *  addMethod() : 메소드를 추가합니다.
+             *  addSuperinterface() : 인터페이스를 추가합니다.
+             * */
+            TypeSpec magicMoja = TypeSpec.classBuilder("MagicMoja")
+                    .addModifiers(Modifier.PUBLIC)
+                    .addSuperinterface(className)
+                    .addMethod(pullOut)
+                    .build();
+
+            /**
+             * 위 코드는 메모리상의 소스로만 클레스를 정의한것
+             * Filer 인터페이스 를 사용하여 소스코드를 생성할 수 있습니다.
+             * 이를 Javapoet을 사용하여 더 쉽게 생성할 수 있습니다.
+             *
+             * JavaFile.builder(p, c) : 패키지 네임의 위치에 클래스를 생성해라
+             * */
+            Filer filer = processingEnv.getFiler();
+
+            try {
+                JavaFile.builder(className.packageName(), magicMoja)
+                        .build()
+                        .writeTo(filer);
+            } catch (IOException e) {
+                processingEnv.getMessager().printMessage(Kind.ERROR, "FATAL ERROR " + e);
             }
         }
 
