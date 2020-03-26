@@ -1,5 +1,7 @@
 package org.example;
 
+import java.util.ArrayList;
+
 /**
  * Hello world!
  */
@@ -11,5 +13,8 @@ public class App {
          * */
         Moja moja = new MagicMoja();
         System.out.println(moja.pullOut());
+
+        ArrayList<String[]> lists = new ArrayList<>();
+
     }
 }
